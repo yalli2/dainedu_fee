@@ -98,6 +98,7 @@ button.cell{cursor:pointer;text-align:left}
   </header>
 
   <div class="notice" id="notice"></div>
+  <div class="hint" id="ambNote" hidden></div>
 
   <section class="summary" aria-label="요약">
     <div class="sum"><div class="k">수강생·수업</div><div class="v num" id="sStudents">0</div></div>
@@ -151,7 +152,7 @@ button.cell{cursor:pointer;text-align:left}
 <script>
 (function(){
   var DOW=['일','월','화','수','목','금','토'];
-  var S=[
+  var FIXED=[
     {id:'dongan-in', name:'동안청소년수련관', sub:'스페인어 입문반', days:[1], time:'15:00–16:00', h:1},
     {id:'dongan-cho', name:'동안청소년수련관', sub:'스페인어 초급반', days:[1], time:'16:00–17:00', h:1},
     {id:'shin', name:'신윤호', sub:'SFS 스페인어', days:[1], time:'19:00–20:00', h:1},
@@ -189,6 +190,8 @@ button.cell{cursor:pointer;text-align:left}
   var DEFAULT_RANGE={'2026-11':[2,30]};
   var CONFIRMED_UNTIL=(YM==='2026-11')?15:0;
 
+  function start(S,isHist,failed,amb){
+  if(isHist)CONFIRMED_UNTIL=99;
   var P=load(K_PRICE,{});
   var W=load(K_WORK+YM,null);
   if(!W){
@@ -204,7 +207,10 @@ button.cell{cursor:pointer;text-align:left}
   function records(){return load(K_REC,{});}
 
   function dow(d){return new Date(Y,MI,d).getDay();}
-  function baseDates(s){var r=[];for(var d=W.first;d<=W.last;d++){if(s.days.indexOf(dow(d))>-1)r.push(d);}return r;}
+  function baseDates(s){
+    if(s.fixed)return s.fixed.filter(function(d){return d>=W.first&&d<=W.last;});
+    var r=[];for(var d=W.first;d<=W.last;d++){if(s.days.indexOf(dow(d))>-1)r.push(d);}return r;
+  }
   function dates(s){
     var skip=W.skip[s.id]||[], extra=W.extra[s.id]||[], set={};
     baseDates(s).forEach(function(d){if(skip.indexOf(d)<0)set[d]=1;});
@@ -232,9 +238,17 @@ button.cell{cursor:pointer;text-align:left}
   document.title=Y+'년 '+(MI+1)+'월 수업료 계산기';
   $('title').textContent=Y+'년 '+(MI+1)+'월 수업료 계산기';
   $('subtitle').textContent=Y+'년 '+(MI+1)+'월 '+W.first+'일 ~ '+(MI+1)+'월 '+W.last+'일 · 수강생별 수업일수, 진행 체크, '+NEXT+' 이월';
-  $('notice').textContent=(YM==='2026-11')
-    ? '구글 캘린더에서 11/2~11/15 일정은 그대로 가져왔습니다. 11/16~11/30은 조회 한도 오류로 가져오지 못해 같은 요일 반복 일정으로 계산했습니다(달력에 "추정" 표시). 취소·보강이 있으면 수강생을 눌러 날짜를 직접 고쳐 주세요.'
+  $('notice').textContent=failed
+    ? '이 달의 지난 일정 데이터(hist.json)를 불러오지 못했습니다. 페이지를 새로 고쳐 보세요.'
+    : isHist
+    ? (S.length?'구글 캘린더에서 읽은 실제 일정입니다. 수업으로 분류된 일정만 넣었고, "취소"가 붙은 일정과 수업인지 애매한 일정은 뺐습니다. 빠지거나 더해야 할 날짜는 수강생을 눌러 "날짜 수정"에서 고쳐 주세요.':'이 달에는 캘린더에서 수업으로 읽은 일정이 없습니다.')
+    : (YM==='2026-11')
+    ?'구글 캘린더에서 11/2~11/15 일정은 그대로 가져왔습니다. 11/16~11/30은 조회 한도 오류로 가져오지 못해 같은 요일 반복 일정으로 계산했습니다(달력에 "추정" 표시). 취소·보강이 있으면 수강생을 눌러 날짜를 직접 고쳐 주세요.'
     : '이 달 일정은 구글 캘린더를 확인하지 않고 같은 요일 반복 일정으로 계산한 추정치입니다. 취소·보강이 있으면 수강생을 눌러 날짜를 직접 고쳐 주세요.';
+  if(isHist&&amb&&amb.length){
+    var an=$('ambNote');an.hidden=false;
+    an.textContent='집계에서 뺀 애매한 일정(취소 표시·면접·내부 일정 등): '+amb.map(function(e){return e.t+' '+e.d.map(function(d){return (MI+1)+'/'+d;}).join(', ');}).join(' · ')+'. 수업이면 해당 수강생에서 "날짜 수정"으로 추가하세요.';
+  }
   $('firstDay').value=W.first; $('lastDay').value=W.last;
 
   function updateSaveState(){
@@ -414,6 +428,19 @@ button.cell{cursor:pointer;text-align:left}
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){msg('복사했습니다. 스프레드시트에 붙여 넣으세요.');},fallback);}else{fallback();}
   });
   render();
+  }
+
+  function slug(t){var h=5381;for(var i=0;i<t.length;i++){h=((h<<5)+h+t.charCodeAt(i))>>>0;}return 'h'+h.toString(36);}
+  function fromHist(list){return list.map(function(e){
+    var ds=e.d.slice().sort(function(a,b){return a-b;}), wd=[];
+    ds.forEach(function(d){var w=new Date(Y,MI,d).getDay();if(wd.indexOf(w)<0)wd.push(w);});
+    var m=(e.tm||'').match(/(\d\d):(\d\d)\D+(\d\d):(\d\d)/), h=1;
+    if(m){var mins=(Number(m[3])*60+Number(m[4]))-(Number(m[1])*60+Number(m[2]));if(mins>0)h=mins/60;}
+    return {id:slug(e.t),name:e.t,sub:'',days:wd,time:e.tm||'시간 미지정',h:h,fixed:ds};
+  });}
+  if(YM<'2026-11'){
+    fetch('hist.json').then(function(r){return r.json();}).then(function(H){start(fromHist(H[YM]||[]),true,false,(H._amb||{})[YM]||[]);}).catch(function(){start([],true,true);});
+  } else { start(FIXED,false,false); }
 })();
 </script>
 </body>

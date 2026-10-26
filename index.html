@@ -65,6 +65,14 @@ textarea{width:100%;min-height:90px;font-family:var(--font-num);font-size:12px;p
 .hint{font-size:12px;color:var(--muted)}
 .notice{background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:10px 14px;font-size:13px}
 .stack{display:flex;flex-direction:column;gap:10px}
+.yrow{display:grid;grid-template-columns:52px repeat(12,minmax(0,1fr));gap:4px;align-items:stretch}
+.yl{font-family:var(--font-num);font-size:12px;color:var(--muted);align-self:center}
+.mchip{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:46px;padding:2px 0;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);text-decoration:none;font-size:11px;line-height:1.25}
+.mchip b{font-family:var(--font-num);font-size:13px;font-weight:500}
+.mchip.none{opacity:.45}
+.mchip.saved{border:2px solid var(--accent);background:var(--accent-soft)}
+.mchip:hover{border-color:var(--accent)}
+@media (max-width:640px){.yrow{grid-template-columns:repeat(6,minmax(0,1fr))}.yl{grid-column:1/-1}}
 </style>
 </head>
 <body>
@@ -104,6 +112,12 @@ textarea{width:100%;min-height:90px;font-family:var(--font-num);font-size:12px;p
     </div>
     <div class="empty" id="empty" hidden>아직 저장된 정산이 없습니다. 아래에서 월을 골라 계산하고 "이 달 정산 저장"을 누르면 여기에 쌓입니다.</div>
     <p class="hint">매출 = (예정 수업 + 전월 이월 − 다음 달 이월) × 회당 단가. 다음 달로 이월한 수업은 이월한 달에는 청구하지 않고, 다음 달 정산에 더해집니다.</p>
+  </section>
+
+  <section class="card stack" id="histSec">
+    <h2>지난 달 수업 목록 (2020년 1월~)</h2>
+    <p class="hint">구글 캘린더에서 읽은 수업 일정을 월별로 정리했습니다. 달을 누르면 수강생별 수업일수가 나오고, 단가를 넣어 저장하면 위의 총 매출에 더해집니다. 칸의 숫자는 그 달 수업일수 합계이고, 파란 테두리는 저장한 달입니다.</p>
+    <div id="histGrid" class="stack"></div>
   </section>
 
   <section class="card stack">
@@ -228,7 +242,33 @@ textarea{width:100%;min-height:90px;font-family:var(--font-num);font-size:12px;p
     });
     render();bmsg(n+'개 항목을 불러왔습니다.');
   });
+  function drawHist(){
+    var grid=$('histGrid'); if(!grid)return;
+    var recs=load(K_REC,{});
+    fetch('hist.json').then(function(r){return r.json();}).then(function(H){
+      grid.innerHTML='';
+      for(var y=2026;y>=2020;y--){
+        var row=document.createElement('div');row.className='yrow';
+        var yl=document.createElement('div');yl.className='yl';yl.textContent=y+'년';row.appendChild(yl);
+        for(var m=1;m<=12;m++){
+          var ym=y+'-'+(m<10?'0':'')+m, list=H[ym]||[], n=0;
+          list.forEach(function(e){n+=e.d.length;});
+          var isFuture=(ym>'2026-11');
+          var a=document.createElement('a');
+          a.className='mchip'+(recs[ym]?' saved':'')+((!n&&ym!=='2026-11')?' none':'');
+          a.href='calc.html?m='+ym;
+          a.setAttribute('aria-label',y+'년 '+m+'월 수업일수 합계 '+n+(recs[ym]?' (저장됨)':''));
+          a.innerHTML='<span>'+m+'월</span><b>'+(ym==='2026-11'?'11월':(n||'-'))+'</b>';
+          if(ym==='2026-11'){a.innerHTML='<span>'+m+'월</span><b>예정</b>';}
+          if(isFuture){continue;}
+          row.appendChild(a);
+        }
+        grid.appendChild(row);
+      }
+    }).catch(function(){grid.innerHTML='<div class="empty">지난 달 데이터(hist.json)를 불러오지 못했습니다.</div>';});
+  }
   render();
+  drawHist();
 })();
 </script>
 </body>
